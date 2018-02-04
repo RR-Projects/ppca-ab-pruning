@@ -1,10 +1,10 @@
 #pragma once
 
 #include <iostream>
-#include <thrust\host_vector.h>
 #include <memory>
 
 #include "ppca_helpers.h"
+#include "PlayerLine.h"
 
 using namespace std;
 
@@ -13,9 +13,8 @@ class Board
 public:
 	static unsigned long long nCreated, nCopied, nDeleted;
 
-
 	CUDA_CALLABLE_MEMBER Board();
-	CUDA_CALLABLE_MEMBER Board(int x, int y);
+	CUDA_CALLABLE_MEMBER Board(int x, int y, int lineLength);
 
 	CUDA_CALLABLE_MEMBER Board(const Board& b);
 	CUDA_CALLABLE_MEMBER Board(Board&& b);
@@ -24,7 +23,7 @@ public:
 
 	CUDA_CALLABLE_MEMBER ~Board();
 
-	void GenerateMoves(thrust::host_vector<Board>& result, GAME_CHAR player);
+	int GenerateMoves(Board** results, GAME_CHAR player);
 
 	unsigned int GetColumns();
 	unsigned int GetRows();
@@ -36,12 +35,18 @@ public:
 	void SetCell(int x, int y, unsigned int val);
 	void Print();
 
+	void CalculateScore();
+	long long int GetScore() { return score; }
 private:
 	unsigned int* data;
-	unsigned int xy, filledCells, score;
+	unsigned int xy, filledCells, lineLength;
+	long long int score;
 	// min size of class: 16 bytes (4 * (1 int of data + 3 int properties))
 
-	void UpdateScore(int x, int y);
+	PlayerLine** scoreLines;
+	int scoreLinesSize;
+
+	void CalculateScoreOnDirection(Point slowIncrement, Point fastIncrement, bool startFromTopRight = false, bool applyInitialSlowIncrement = false);
 
 	unsigned int inline GetCellInternal(int index, char offset) {
 		return (data[index] >> offset) & 0x3;

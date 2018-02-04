@@ -14,3 +14,6 @@
 #define CELL_BITMAP (GAME_CHAR)0x3
 
 #define SWITCH_PLAYER(p) ~p & CELL_BITMAP
+#define CHAR_IS(val, comparer) (!(val - comparer))
+//((val & comparer & PLAYER) | ((val & comparer & OPPONENT) >> 1) | ((val | comparer | 0x4) & EMPTY) ))
+#define CHAR_NOT(val) (!val)
