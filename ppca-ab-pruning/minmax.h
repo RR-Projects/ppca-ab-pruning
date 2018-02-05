@@ -1,21 +1,24 @@
 #pragma once
 
 #include <queue>
+#include <map>
+#include <stack>
 
 #include "board.h"
+#include "State.h"
 
 using namespace std;
 namespace ppca {
 
-	class minmax
-	{
-	public:
-		minmax();
-		~minmax();
+    class minmax
+    {
+    public:
+        minmax();
+        ~minmax();
 
-		queue<Board> GetTasks(const Board& startingBoard, GAME_CHAR startPlayer, int minTaskCount, int maxDepth);
+        queue<Board> GetTasks(Board& startingBoard, GAME_CHAR startPlayer, int minTaskCount, int maxDepth, int& searchedDepth);
 
-		Board& GetBestMove(const queue<Board>& gpuResults, GAME_CHAR startPlayer);
-	};
+        Board GetBestMove(Board& startBoard, GAME_CHAR startPlayer, const map<unsigned int, long long int>& gpuResults, int depth);
+    };
 
 }
