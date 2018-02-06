@@ -192,7 +192,12 @@ void Board::CalculateScoreOnDirection(Point slowIncrement, Point fastIncrement, 
 }
 
 void Board::Print() const {
+	cout << "  ";
+	for (unsigned int j = 0; j < GetRows(); j++)
+		cout << j + 1;
+	cout << endl << endl;
     for (unsigned int j = 0; j < GetRows(); j++) {
+		cout << j << ' ';
         for (unsigned int i = 0; i < GetColumns(); i++) {
 			switch (GetCell(i, j))
 			{
