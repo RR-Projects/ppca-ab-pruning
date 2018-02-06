@@ -122,6 +122,8 @@ namespace ppca {
                     player = SWITCH_PLAYER(player);
                     depth++;
                 }
+
+                delete child;
             }
             else if (parent->GetBoard().HasNextMove()) {
                 State move(SWITCH_PLAYER(player));
@@ -133,10 +135,7 @@ namespace ppca {
                 player = SWITCH_PLAYER(player);
                 depth--;
             }
-
-            // TODO: check alpha beta pruning
         }
-
 
         return bestMove;
     }

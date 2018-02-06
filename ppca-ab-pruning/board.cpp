@@ -4,8 +4,8 @@ unsigned long long Board::nCreated = 0ULL;
 unsigned long long Board::nCopied = 0ULL;
 unsigned long long Board::nDeleted = 0ULL;
 
-CUDA_CALLABLE_MEMBER Board::Board() : data(nullptr), columns(0), rows(0), partialScore(0), filledCells(0), lineLength(0), isTerminal(false) { }
-CUDA_CALLABLE_MEMBER Board::Board(const int& x, const int& y, const unsigned char& lineLength) : data(nullptr), lineLength(lineLength), filledCells(0), treePosition(0), nextMoveIterator(0), partialScore(0), isTerminal(false)
+Board::Board() : data(nullptr), columns(0), rows(0), partialScore(0), filledCells(0), lineLength(0), isTerminal(false) { }
+Board::Board(const int& x, const int& y, const unsigned char& lineLength) : data(nullptr), lineLength(lineLength), filledCells(0), treePosition(0), nextMoveIterator(0), partialScore(0), isTerminal(false)
 {
     nCreated++;
 
@@ -17,11 +17,11 @@ CUDA_CALLABLE_MEMBER Board::Board(const int& x, const int& y, const unsigned cha
     memset(data, 0, size * sizeof(int));
 }
 
-CUDA_CALLABLE_MEMBER Board::Board(const Board& b) {
+Board::Board(const Board& b) {
     operator=(b);
 }
 
-CUDA_CALLABLE_MEMBER Board::Board(Board&& b) : columns(b.columns), rows(b.rows), filledCells(b.filledCells), partialScore(b.partialScore), lineLength(b.lineLength), treePosition(b.treePosition), nextMoveIterator(0), isTerminal(b.isTerminal) {
+Board::Board(Board&& b) : columns(b.columns), rows(b.rows), filledCells(b.filledCells), partialScore(b.partialScore), lineLength(b.lineLength), treePosition(b.treePosition), nextMoveIterator(0), isTerminal(b.isTerminal) {
     data = b.data;
 }
 
@@ -44,6 +44,22 @@ Board& Board::operator=(const Board & b)
     memcpy(data, b.data, size * sizeof(int));
 
     return *this;
+}
+
+Board::Board(int* data) : nextMoveIterator(0), treePosition(0), partialScore(0) {
+    filledCells = *data;
+    data++;
+
+    char* b = (char*)data;
+    columns = *b;       b++;
+    rows = *b;          b++;
+    lineLength = *b;    b++;
+    isTerminal = *b;    b++;
+    data++;
+
+    auto size = GetDataStructureSize();
+    this->data = new unsigned int[size];
+    memcpy(this->data, data, size * sizeof(int));
 }
 
 int * Board::CopyToBuffer(int * buffer) const {
@@ -234,7 +250,7 @@ void Board::Print() const {
     }
 }
 
-CUDA_CALLABLE_MEMBER Board::~Board()
+Board::~Board()
 {
     nDeleted++;
     delete[] data;

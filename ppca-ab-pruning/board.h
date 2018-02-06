@@ -13,15 +13,18 @@ class Board
 public:
     static unsigned long long nCreated, nCopied, nDeleted;
 
-    CUDA_CALLABLE_MEMBER Board();
-    CUDA_CALLABLE_MEMBER Board(const int& x, const int& y, const unsigned char& lineLength);
+    Board();
+    Board(int* data);
+    Board(const int& x, const int& y, const unsigned char& lineLength);
 
-    CUDA_CALLABLE_MEMBER Board(const Board& b);
-    CUDA_CALLABLE_MEMBER Board(Board&& b);
+    Board(const Board& b);
+    Board(Board&& b);
 
     Board& operator=(const Board& b);
 
-    CUDA_CALLABLE_MEMBER ~Board();
+    ~Board();
+
+    inline unsigned int GetMaxDepth() const { return columns * rows - filledCells; }
 
     inline void SetTreePosition(const unsigned int& pos) { treePosition = pos; }
     inline unsigned int GetTreePosition() const { return treePosition; }
@@ -48,9 +51,9 @@ public:
 
     inline bool IsTerminal() const { return isTerminal || (columns * rows == filledCells); }
 
-    inline unsigned int GetSizeForBuffer() const {
-        return GetDataStructureSize() + 2;
-    }
+
+
+    inline unsigned int GetSizeForBuffer() const { return GetDataStructureSize() + 2; }
 
     int* CopyToBuffer(int* buffer) const;
 private:

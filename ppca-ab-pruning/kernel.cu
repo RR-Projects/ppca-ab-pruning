@@ -12,11 +12,393 @@
 #include "board.h"
 #include "minmax.h"
 
-__global__ void minmaxKernel(int taskCount, long long* results, int* data, unsigned int dataSize) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
+__device__ struct DevPoint {
+public:
+    int x, y;
 
-    /*for (; i < count; i += blockDim.x * gridDim.x)
-        c[i] = (1 << i) + 1;*/
+    __device__ DevPoint() { }
+
+    __device__ DevPoint(int pos, int boardX) {
+        x = pos % boardX;
+        y = pos / boardX;
+    }
+
+    __device__ inline DevPoint operator-(const DevPoint& p) {
+        DevPoint r;
+        r.x = x - p.x;
+        r.y = y - p.y;
+        return r;
+    }
+
+    __device__ inline bool operator==(const DevPoint& p) {
+        return x == p.x && y == p.y;
+    }
+
+    __device__ inline bool isZero() {
+        return x == 0 && y == 0;
+    }
+
+    __device__ inline bool isAdjacent(const DevPoint& p) {
+        return abs(x - p.x) < 2 && abs(y - p.y) < 2;
+    }
+
+};
+
+__device__ class DevBoard {
+private:
+    unsigned int filledCells, nextMoveIterator;
+    unsigned char columns, rows, lineLength, isTerminal;
+    unsigned int* data;
+
+    long long partialScore;
+
+public:
+    __device__ DevBoard() : data(nullptr), filledCells(0), columns(0), rows(0), lineLength(0), isTerminal(0), partialScore(0) { }
+
+    __device__ DevBoard(int* data) {
+        filledCells = *data;
+        data++;
+
+        char* b = (char*)data;
+        columns = *b;       b++;
+        rows = *b;          b++;
+        lineLength = *b;    b++;
+        isTerminal = *b;    b++;
+        data++;
+
+        auto size = GetDataStructureSize();
+        this->data = (unsigned int*)malloc(size * sizeof(unsigned int));
+        memcpy(this->data, data, size * sizeof(unsigned int));
+    }
+
+    __device__ DevBoard(const DevBoard& b) {
+        operator=(b);
+    }
+
+    __device__ DevBoard(DevBoard&& b) : columns(b.columns), rows(b.rows), filledCells(b.filledCells), lineLength(b.lineLength), nextMoveIterator(0), isTerminal(b.isTerminal), partialScore(b.partialScore) {
+        auto size = GetDataStructureSize();
+        data = (unsigned int*)malloc(size * sizeof(unsigned int));;
+        memcpy(data, b.data, size * sizeof(unsigned int));
+    }
+
+    __device__ DevBoard& operator=(const DevBoard & b)
+    {
+        nextMoveIterator = 0;
+
+        isTerminal = b.isTerminal;
+        lineLength = b.lineLength;
+        columns = b.columns;
+        rows = b.rows;
+        filledCells = b.filledCells;
+        partialScore = b.partialScore;
+
+        auto size = GetDataStructureSize();
+        data = (unsigned int*)malloc(size * sizeof(unsigned int));;
+        memcpy(data, b.data, size * sizeof(unsigned int));
+
+        return *this;
+    }
+
+    __device__ ~DevBoard() {
+        if (data == nullptr)
+            return;
+
+        free(data);
+        data = nullptr;
+    }
+
+    __device__ inline bool HasNextMove() const { return GetUpper16Bits(nextMoveIterator) < columns && GetLower16Bits(nextMoveIterator) < rows && (!IsTerminal()); }
+    __device__ inline bool IsTerminal() const { return isTerminal || (columns * rows == filledCells); }
+
+    __device__ inline unsigned int GetMaxDepth() const { return columns * rows - filledCells; }
+
+    __device__ inline long long GetPartialScore() const { return partialScore; }
+
+    __device__ inline unsigned int GetCell(const int& x, const int& y) const {
+        return GetCellInternal(GetIndex(x, y), GetOffset(x, y));
+    }
+
+    __device__ void SetCell(int x, int y, unsigned int val) {
+        int index = GetIndex(x, y);
+        char offset = GetOffset(x, y);
+
+        auto exVal = GetCellInternal(index, offset);
+
+        auto exValBit = (((exVal + 1) >> 1) & 0x1);
+        auto valBit = (((val + 1) >> 1) & 0x1);
+        filledCells += (-1 * exValBit) | (valBit ^ exValBit);
+
+        val = (val & CELL_BITMAP) << offset; // first two bits shifted by offset amount
+        unsigned int clearPos = ~(CELL_BITMAP << offset);
+
+        data[index] = (data[index] & clearPos) | val;
+
+        CalculateScore();
+    }
+
+    __device__ void GetNextMove(DevBoard& move, GAME_CHAR player) {
+        unsigned int
+            i = GetUpper16Bits(nextMoveIterator),
+            j = GetLower16Bits(nextMoveIterator);
+
+        bool foundMove = false;
+
+        for (; j < rows; j++) {
+            for (; i < columns; i++) {
+
+                if (GetCell(i, j) == 0) {
+
+                    // found second move, update iterator and return
+                    if (foundMove) {
+                        nextMoveIterator = (i << 16) | (j & 0xFFFF);
+                        return;
+                    }
+                    foundMove = true;
+
+                    // found first move, set it to the return parameter
+                    move = *this;
+                    move.SetCell(i, j, player);
+                }
+            }
+            i = 0;
+        }
+
+        nextMoveIterator = (columns << 16) | (rows & 0xFFFF);
+    }
+
+private:
+
+    __device__ void CalculateScore() {
+        partialScore = rows * columns - filledCells; // reset
+
+        DevPoint slowIncrement, fastIncrement;
+
+        // horizontal move
+        slowIncrement.x = 0;
+        slowIncrement.y = 1;
+        fastIncrement.x = 1;
+        fastIncrement.y = 0;
+        CalculateScoreOnDirection(slowIncrement, fastIncrement);
+
+        // vertical move
+        slowIncrement.x = 1;
+        slowIncrement.y = 0;
+        fastIncrement.x = 0;
+        fastIncrement.y = 1;
+        CalculateScoreOnDirection(slowIncrement, fastIncrement);
+
+        // first diagonal, upper part
+        slowIncrement.x = 1;
+        slowIncrement.y = 0;
+        fastIncrement.x = 1;
+        fastIncrement.y = 1;
+        CalculateScoreOnDirection(slowIncrement, fastIncrement, false);
+
+        // first diagonal, lower part
+        slowIncrement.x = 0;
+        slowIncrement.y = 1;
+        fastIncrement.x = 1;
+        fastIncrement.y = 1;
+        CalculateScoreOnDirection(slowIncrement, fastIncrement, false, true);
+
+        // second diagonal, upper part
+        slowIncrement.x = 1;
+        slowIncrement.y = 0;
+        fastIncrement.x = -1;
+        fastIncrement.y = 1;
+        CalculateScoreOnDirection(slowIncrement, fastIncrement);
+
+        // second diagonal, lower part
+        slowIncrement.x = 0;
+        slowIncrement.y = 1;
+        fastIncrement.x = -1;
+        fastIncrement.y = 1;
+        CalculateScoreOnDirection(slowIncrement, fastIncrement, true, true);
+    }
+
+    __device__ void CalculateScoreOnDirection(DevPoint slowIncrement, DevPoint fastIncrement, bool startFromTopRight = false, bool applyInitialSlowIncrement = false) {
+        unsigned int
+            i = 0 + applyInitialSlowIncrement * slowIncrement.x + startFromTopRight * (columns - 1),
+            j = 0 + applyInitialSlowIncrement * slowIncrement.y;
+
+        for (; i >= 0 && j >= 0 && i < columns && j < rows; i += slowIncrement.x, j += slowIncrement.y) {
+
+
+            unsigned int x = i, y = j;
+            unsigned int counter = 0;
+            GAME_CHAR lastSeen = EMPTY;
+            for (; x >= 0 && y >= 0 && x < columns && y < rows; x += fastIncrement.x, y += fastIncrement.y) {
+                auto val = GetCell(x, y);
+
+                auto winOrLoss = 1 - 2 * CHAR_IS(val, OPPONENT);
+                winOrLoss = winOrLoss * CHAR_NOT(CHAR_IS(val, EMPTY));
+
+                counter = (counter * CHAR_IS(lastSeen, val)) + 1; // update counter or reset to 1
+
+                partialScore += (winOrLoss * 4) << counter; // increment/decrement score by 2 << 1 up to 2 << lineLength
+                partialScore += ((counter == lineLength) * winOrLoss) << 24; // handle win/loss (counter == lineLength) by adding or subtracting a large number (1 << 24)
+                isTerminal |= (counter == lineLength) * CHAR_NOT(CHAR_IS(val, EMPTY));
+
+                lastSeen = val;
+            }
+        }
+    }
+
+
+    __device__ inline unsigned int GetDataStructureSize() const {
+        return ((this->columns * this->rows << 1) + 31) / (sizeof(int) << 3); // (x * y * 2 + 31) / (8 * sizeof(int)); 
+    }
+
+    __device__ inline unsigned int GetUpper16Bits(const unsigned int& val) const { return val >> 16; }
+    __device__ inline unsigned int GetLower16Bits(const unsigned int& val) const { return val & 0xFFFF; }
+
+    __device__ inline unsigned int GetCellInternal(const int& index, const char& offset) const {
+        return (data[index] >> offset) & 0x3;
+    }
+
+    __device__ inline unsigned int GetIndex(const int& x, const int& y) const {
+        return this->pos(x, y) / 32;
+    }
+
+    __device__ inline unsigned int GetOffset(const int& x, const int& y) const {
+        return this->pos(x, y) % 32;
+    }
+
+    __device__ inline unsigned int pos(const int& x, const int& y) const {
+        return (this->columns * y + x) << 1;
+    }
+};
+
+__device__ class DevState {
+private:
+    DevBoard board;
+    long long score, alpha, beta;
+
+public:
+    __device__ DevState() : DevState(PLAYER, board) { }
+
+    __device__ DevState(GAME_CHAR player) : DevState(player, board) { }
+
+    __device__ DevState(GAME_CHAR player, const DevBoard& board) {
+        score = CHAR_IS(player, PLAYER) * INT64_MIN
+            + CHAR_IS(player, OPPONENT) * INT64_MAX;
+
+        alpha = INT64_MIN;
+        beta = INT64_MAX;
+        this->board = board;
+    }
+
+    __device__ DevState(const DevState& s) {
+        operator=(s);
+    }
+
+    __device__ DevState& operator=(const DevState& s) {
+        score = s.score;
+        alpha = s.alpha;
+        beta = s.beta;
+
+        board = s.board;
+    }
+
+    __device__ inline void SetScore(const long long& score) { this->score = score; }
+    __device__ inline long long GetScore() const { return score; }
+
+    __device__ inline void SetAlpha(const long long& alpha) { this->alpha = alpha; }
+    __device__ inline long long GetAlpha() { return alpha; }
+
+    __device__ inline void SetBeta(const long long& beta) { this->beta = beta; }
+    __device__ inline long long GetBeta() { return beta; }
+
+    __device__ inline DevBoard& GetBoard() { return board; }
+};
+
+__device__ long long dev_minmax(const DevBoard &board, DevState* _stack, GAME_CHAR startPlayer, int depth) {
+    int maxDepth = depth;
+
+    int stackPos = 0;
+
+    _stack[stackPos] = DevState(startPlayer, board);
+
+    long long bestScore = CHAR_IS(startPlayer, PLAYER) * INT64_MIN
+        + CHAR_IS(startPlayer, OPPONENT) * INT64_MAX;;
+
+    while (stackPos >= 0) {
+        DevState* parent = &_stack[stackPos];
+
+        if (depth <= 0 || !parent->GetBoard().HasNextMove() || parent->GetBoard().IsTerminal()) {
+            DevState* child = parent;
+            stackPos--;
+
+            if (stackPos < 0) // reached top of tree
+                continue;
+
+            startPlayer = SWITCH_PLAYER(startPlayer);
+            depth++;
+            parent = &_stack[stackPos];
+
+            auto score = child->GetBoard().GetPartialScore(); // getting the calculated score from the board
+
+            auto prevScore = parent->GetScore();
+
+            if (depth == maxDepth &&
+                (CHAR_IS(startPlayer, PLAYER) && prevScore < score ||
+                    CHAR_IS(startPlayer, OPPONENT) && prevScore > score))
+                bestScore = score;
+
+            parent->SetScore(
+                CHAR_IS(startPlayer, PLAYER) * max(score, prevScore) + // MAX
+                CHAR_IS(startPlayer, OPPONENT) * min(score, prevScore)  // MIN
+            );
+
+            parent->SetAlpha(
+                CHAR_IS(startPlayer, PLAYER) * max(score, parent->GetAlpha()) +  // MAX
+                CHAR_IS(startPlayer, OPPONENT) * parent->GetAlpha() // MIN
+            );
+
+            parent->SetBeta(
+                CHAR_IS(startPlayer, PLAYER) * parent->GetBeta() + // MAX
+                CHAR_IS(startPlayer, OPPONENT) * min(score, parent->GetBeta())  // MIN
+            );
+
+            if (parent->GetAlpha() > parent->GetBeta()) { // alpha beta pruning
+
+                stackPos--;
+                startPlayer = SWITCH_PLAYER(startPlayer);
+                depth++;
+            }
+        }
+        else if (parent->GetBoard().HasNextMove()) {
+            DevState move(SWITCH_PLAYER(startPlayer));
+
+            unsigned int tPos;
+            parent->GetBoard().GetNextMove(move.GetBoard(), startPlayer);
+
+            move.SetAlpha(parent->GetAlpha());
+            move.SetBeta(parent->GetBeta());
+
+            stackPos++;
+            _stack[stackPos] = DevState(move);
+            startPlayer = SWITCH_PLAYER(startPlayer);
+            depth--;
+        }
+    }
+
+    return bestScore;
+}
+
+/// --------------- KERNEL
+__global__ void minmaxKernel(int taskCount, void* dev_stack, long long* results, int* data, unsigned int dataItemSize, unsigned int maxDepth) {
+    int threadPos = blockIdx.x * blockDim.x + threadIdx.x;
+
+    for (int i = threadPos; i < taskCount; i += blockDim.x * gridDim.x) {
+
+        DevBoard b(data + i * dataItemSize);
+        DevState* stack = (DevState*)dev_stack + threadPos * (maxDepth + 1);
+
+        long long bestScore = dev_minmax(b, stack, PLAYER, 3);
+
+        results[i] = bestScore;
+    }
 }
 
 void FindBestMove(State& state, GAME_CHAR player, int depth) {
@@ -26,7 +408,14 @@ void FindBestMove(State& state, GAME_CHAR player, int depth) {
         exit(1);
     }
 
-    int N = 2 << 13;
+    cudaDeviceSetLimit(cudaLimitMallocHeapSize, 16 * 1024 * 1024);
+    cudaStatus = cudaSetDevice(0);
+    if (cudaStatus != cudaSuccess) {
+        cerr << "cudaDeviceSetLimit failed!";
+        exit(1);
+    }
+
+    int N = 2 << 8;
     ppca::minmax mmAlg;
 
     int searchedDepth;
@@ -35,24 +424,28 @@ void FindBestMove(State& state, GAME_CHAR player, int depth) {
     int minGridSize;    // The minimum grid size needed to achieve the maximum occupancy for a full device launch 
     int gridSize;       // The actual grid size needed, based on input size
 
+    int gpuDepth = 3;
     auto tasks = mmAlg.GetTasks(state.GetBoard(), player, N, depth, searchedDepth);
 
     float time;
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start, 0);
+    //cudaEvent_t start, stop;
+    //cudaEventCreate(&start);
+    //cudaEventCreate(&stop);
+    //cudaEventRecord(start, 0);
 
     cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, minmaxKernel, 0, tasks.size());
 
     // Round up according to array size 
-    gridSize = (tasks.size() + blockSize - 1) / blockSize;
+    gridSize = 1;// (tasks.size() + blockSize - 1) / blockSize;
+    //blockSize = 1;
 
-    cudaEventRecord(stop, 0);
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&time, start, stop);
-    printf("Occupancy calculator elapsed time:  %3.3f ms \n", time);
+    //cudaEventRecord(stop, 0);
+    //cudaEventSynchronize(stop);
+    cudaDeviceSynchronize();
+    //cudaEventElapsedTime(&time, start, stop);
+    //printf("Occupancy calculator elapsed time:  %3.3f ms \n", time);
 
+    void* dev_stack;
     int *dev_data, *host_data;
     long long *dev_results, *host_results;
     auto size = mmAlg.ConvertToGpuData(&host_data, tasks);
@@ -71,6 +464,13 @@ void FindBestMove(State& state, GAME_CHAR player, int depth) {
         exit(1);
     }
 
+    cudaStatus = cudaMalloc((void**)&dev_stack, (gpuDepth + 1) * gridSize * blockSize * sizeof(DevState));
+    if (cudaStatus != cudaSuccess) {
+        cerr << "cudaMalloc failed for results array!";
+        cudaFree(dev_data);
+        exit(1);
+    }
+
     cudaStatus = cudaMemcpy(dev_data, host_data, size * sizeof(int), cudaMemcpyHostToDevice);
     if (cudaStatus != cudaSuccess) {
         cerr << "cudaMemcpy failed: data array to device!";
@@ -80,13 +480,14 @@ void FindBestMove(State& state, GAME_CHAR player, int depth) {
     }
 
 
-    cudaEventRecord(start, 0);
-    minmaxKernel << <gridSize, blockSize >> > (tasks.size(), dev_results, dev_data, size);
+    //cudaEventRecord(start, 0);
+    minmaxKernel << <gridSize, blockSize >> > (tasks.size(), dev_stack, dev_results, dev_data, size / tasks.size(), gpuDepth);
 
-    cudaEventRecord(stop, 0);
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&time, start, stop);
-    printf("Kernel elapsed time:  %3.3f ms \n", time);
+    //cudaEventRecord(stop, 0);
+    //cudaEventSynchronize(stop);
+    //cudaEventElapsedTime(&time, start, stop);
+    //printf("Kernel elapsed time:  %3.3f ms \n", time);
+    cudaDeviceSynchronize();
 
     cudaStatus = cudaGetLastError();
     if (cudaStatus != cudaSuccess) {
