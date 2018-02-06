@@ -40,7 +40,7 @@ int _main() {
 			cin >> xpostion;
 			break;
 		}
-		cout << endl << "Provide postion to set 'X'" << endl;
+		cout << endl << "Provide postion to set 'X' mark" << endl;
 		
 		//Validate position
 		bool posIsTaken = true;
@@ -49,15 +49,15 @@ int _main() {
 			//init vars
 			posIsTaken = false;
 			xpostion = 0;
-			ypostion = myBoard.GetColumns() + 2;
+			ypostion = myBoard.GetRows() + 2;
 			//Check if x is valid
 			while (1) {
-				cout << "x(1-" << myBoard.GetRows() << "):"; cin >> xpostion;
+				cout << "x(1-" << myBoard.GetColumns() << "):"; cin >> xpostion;
 				xpostion--;
-				if (xpostion < 0 || xpostion > myBoard.GetRows()) {
+				if (xpostion < 0 || xpostion > myBoard.GetColumns()) {
 					system("cmd /c cls");
 					myBoard.Print();
-					cout << endl << "Provide postion to set 'X'" << endl;
+					cout << endl << "Provide postion to set 'X' mark" << endl;
 					cout << "Error: x value is not valid" << endl;
 				}
 				else {
@@ -67,14 +67,14 @@ int _main() {
 
 			//Check if y is valid
 			while (1) {
-				cout << "y(1-" << myBoard.GetColumns() << "):"; cin >> ypostion;
+				cout << "y(1-" << myBoard.GetRows() << "):"; cin >> ypostion;
 				ypostion--;
-				if (ypostion < 0 || ypostion > myBoard.GetColumns()) {
+				if (ypostion < 0 || ypostion > myBoard.GetRows()) {
 					system("cmd /c cls");
 					myBoard.Print();
-					cout << endl << "Provide postion to set 'X'" << endl;
+					cout << endl << "Provide postion to set 'X' mark" << endl;
 					cout << "Error: y value is not valid" << endl;
-					cout << "x(1-" << myBoard.GetRows() << "):" << xpostion << endl;
+					cout << "x(1-" << myBoard.GetColumns() << "):" << xpostion << endl;
 				}
 				else {
 					break;
@@ -86,7 +86,7 @@ int _main() {
 				posIsTaken = true;
 				system("cmd /c cls");
 				myBoard.Print();
-				cout << "Provide postion to set 'X'" << endl;
+				cout << "Provide postion to set 'X' mark" << endl;
 				cout << "Error: postion is taken" << endl;
 			}
 		}
