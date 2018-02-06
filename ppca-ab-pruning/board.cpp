@@ -1,4 +1,4 @@
-#include "board.h"
+﻿#include "board.h"
 
 unsigned long long Board::nCreated = 0ULL;
 unsigned long long Board::nCopied = 0ULL;
@@ -194,7 +194,21 @@ void Board::CalculateScoreOnDirection(Point slowIncrement, Point fastIncrement, 
 void Board::Print() const {
     for (unsigned int j = 0; j < GetRows(); j++) {
         for (unsigned int i = 0; i < GetColumns(); i++) {
-            cout << GetCell(i, j) << '-';
+			switch (GetCell(i, j))
+			{
+			case 0:
+				cout << '-';
+				break;
+			case 1:
+				cout << 'X';
+				break;
+			case 2:
+				cout << '0';
+				break;
+			default:
+				break;
+			}
+            
         }
         cout << endl;
     }
