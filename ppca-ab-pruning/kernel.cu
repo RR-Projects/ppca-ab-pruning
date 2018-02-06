@@ -54,7 +54,7 @@ int _main() {
 			while (1) {
 				cout << "x(1-" << myBoard.GetColumns() << "):"; cin >> xpostion;
 				xpostion--;
-				if (xpostion < 0 || xpostion > myBoard.GetColumns()) {
+				if (xpostion < 0 || xpostion >= myBoard.GetColumns()) {
 					system("cmd /c cls");
 					myBoard.Print();
 					cout << endl << "Provide postion to set 'X' mark" << endl;
@@ -69,7 +69,7 @@ int _main() {
 			while (1) {
 				cout << "y(1-" << myBoard.GetRows() << "):"; cin >> ypostion;
 				ypostion--;
-				if (ypostion < 0 || ypostion > myBoard.GetRows()) {
+				if (ypostion < 0 || ypostion >= myBoard.GetRows()) {
 					system("cmd /c cls");
 					myBoard.Print();
 					cout << endl << "Provide postion to set 'X' mark" << endl;
@@ -86,7 +86,7 @@ int _main() {
 				posIsTaken = true;
 				system("cmd /c cls");
 				myBoard.Print();
-				cout << "Provide postion to set 'X' mark" << endl;
+				cout << endl << "Provide postion to set 'X' mark" << endl;
 				cout << "Error: postion is taken" << endl;
 			}
 		}
