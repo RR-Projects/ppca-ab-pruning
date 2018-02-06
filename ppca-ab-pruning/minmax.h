@@ -1,8 +1,8 @@
 #pragma once
 
-#include <queue>
 #include <map>
 #include <list>
+#include <algorithm>
 
 #include "board.h"
 #include "State.h"
@@ -16,9 +16,11 @@ namespace ppca {
         minmax();
         ~minmax();
 
-        queue<Board> GetTasks(Board& startingBoard, GAME_CHAR startPlayer, int minTaskCount, int maxDepth, int& searchedDepth);
+        list<Board> GetTasks(Board& startingBoard, GAME_CHAR startPlayer, int minTaskCount, int maxDepth, int& searchedDepth);
 
-        Board GetBestMove(Board& startBoard, GAME_CHAR startPlayer, const map<unsigned int, long long int>& gpuResults, int depth);
+        unsigned int ConvertToGpuData(int** data, const list<Board>& tasks);
+
+        Board GetBestMove(Board& startBoard, GAME_CHAR startPlayer, const map<unsigned int, long long>& gpuResults, int depth);
     };
 
 }

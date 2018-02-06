@@ -4,13 +4,13 @@ namespace ppca {
 
     minmax::minmax() { }
 
-    queue<Board> minmax::GetTasks(Board& startBoard, GAME_CHAR startPlayer, int minTaskCount, int maxDepth, int& searchedDepth) {
+    list<Board> minmax::GetTasks(Board& startBoard, GAME_CHAR startPlayer, int minTaskCount, int maxDepth, int& searchedDepth) {
 
-        queue<Board> res1, res2;
+        list<Board> res1, res2;
 
         searchedDepth = 0;
         startBoard.SetTreePosition(0);
-        res1.push(startBoard);
+        res1.push_back(startBoard);
         maxDepth--;
 
         while (true) {
@@ -18,19 +18,19 @@ namespace ppca {
                 Board& b = res1.front();
 
                 if (b.IsTerminal()) {
-                    res2.push(b);
-                    res1.pop();
+                    res2.push_back(b);
+                    res1.pop_front();
                     continue;
                 }
 
                 Board* childMoves = nullptr;
                 auto moveCount = b.GenerateMoves(&childMoves, startPlayer);
                 for (int i = 0; i < moveCount; i++) {
-                    res2.push(childMoves[i]);
+                    res2.push_back(childMoves[i]);
                 }
 
 
-                res1.pop();
+                res1.pop_front();
                 delete[] childMoves;
             }
             searchedDepth++;
@@ -50,7 +50,21 @@ namespace ppca {
         return res2;
     }
 
-    Board minmax::GetBestMove(Board& startBoard, GAME_CHAR startPlayer, const map<unsigned int, long long int>& gpuResults, int depth) {
+    unsigned int minmax::ConvertToGpuData(int** data, const list<Board>& tasks)
+    {
+        unsigned int size = tasks.front().GetSizeForBuffer() * tasks.size();
+
+        auto start = *data = new int[size];
+
+        for each (const Board& b in tasks)
+        {
+            start = b.CopyToBuffer(start);
+        }
+
+        return size;
+    }
+
+    Board minmax::GetBestMove(Board& startBoard, GAME_CHAR startPlayer, const map<unsigned int, long long>& gpuResults, int depth) {
         int maxDepth = depth;
         GAME_CHAR player = startPlayer;
 

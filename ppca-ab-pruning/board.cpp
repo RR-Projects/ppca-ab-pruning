@@ -4,13 +4,14 @@ unsigned long long Board::nCreated = 0ULL;
 unsigned long long Board::nCopied = 0ULL;
 unsigned long long Board::nDeleted = 0ULL;
 
-CUDA_CALLABLE_MEMBER Board::Board() : data(nullptr), xy(0), score(0), filledCells(0), lineLength(0), isTerminal(false) { }
-CUDA_CALLABLE_MEMBER Board::Board(const int& x, const int& y, const unsigned char& lineLength) : filledCells(0), data(nullptr), lineLength(lineLength), treePosition(0), nextMoveIterator(0), isTerminal(false)
+CUDA_CALLABLE_MEMBER Board::Board() : data(nullptr), columns(0), rows(0), partialScore(0), filledCells(0), lineLength(0), isTerminal(false) { }
+CUDA_CALLABLE_MEMBER Board::Board(const int& x, const int& y, const unsigned char& lineLength) : data(nullptr), lineLength(lineLength), filledCells(0), treePosition(0), nextMoveIterator(0), partialScore(0), isTerminal(false)
 {
     nCreated++;
-    xy = (x << 16) | (y & 0xFFFF);
 
-    score = x * y;
+    this->columns = x;
+    this->rows = y;
+
     auto size = GetDataStructureSize();
     data = new unsigned int[size];
     memset(data, 0, size * sizeof(int));
@@ -20,7 +21,7 @@ CUDA_CALLABLE_MEMBER Board::Board(const Board& b) {
     operator=(b);
 }
 
-CUDA_CALLABLE_MEMBER Board::Board(Board&& b) : xy(b.xy), filledCells(b.filledCells), score(b.score), lineLength(b.lineLength), treePosition(b.treePosition), nextMoveIterator(0), isTerminal(b.isTerminal) {
+CUDA_CALLABLE_MEMBER Board::Board(Board&& b) : columns(b.columns), rows(b.rows), filledCells(b.filledCells), partialScore(b.partialScore), lineLength(b.lineLength), treePosition(b.treePosition), nextMoveIterator(0), isTerminal(b.isTerminal) {
     data = b.data;
 }
 
@@ -32,10 +33,11 @@ Board& Board::operator=(const Board & b)
 
     isTerminal = b.isTerminal;
     lineLength = b.lineLength;
-    xy = b.xy;
+    columns = b.columns;
+    rows = b.rows;
     filledCells = b.filledCells;
     treePosition = b.treePosition;
-    score = b.score;
+    partialScore = b.partialScore;
 
     auto size = GetDataStructureSize();
     data = new unsigned int[size];
@@ -44,10 +46,25 @@ Board& Board::operator=(const Board & b)
     return *this;
 }
 
-void Board::GetNextMove(Board& move, GAME_CHAR player) {
-    auto columns = GetColumns(), rows = GetRows();
-    auto boardSize = columns * rows;
+int * Board::CopyToBuffer(int * buffer) const {
+    *buffer = filledCells;
+    buffer++;
 
+    char* b = (char*)buffer;
+    *b = columns;       b++;
+    *b = rows;          b++;
+    *b = lineLength;    b++;
+    *b = isTerminal;    b++;
+    buffer++;
+
+    auto size = GetDataStructureSize();
+    memcpy(buffer, data, size * sizeof(int));
+    buffer += size;
+
+    return buffer;
+}
+
+void Board::GetNextMove(Board& move, GAME_CHAR player) {
     unsigned int
         i = GetUpper16Bits(nextMoveIterator),
         j = GetLower16Bits(nextMoveIterator);
@@ -69,7 +86,7 @@ void Board::GetNextMove(Board& move, GAME_CHAR player) {
                 // found first move, set it to the return parameter
                 move = *this;
                 move.SetCell(i, j, player);
-                move.SetTreePosition(boardSize * treePosition + columns * j + i + 1);
+                move.SetTreePosition(columns * rows * treePosition + columns * j + i + 1);
             }
         }
         i = 0;
@@ -80,10 +97,7 @@ void Board::GetNextMove(Board& move, GAME_CHAR player) {
 
 int Board::GenerateMoves(Board** results, GAME_CHAR player) {
 
-    auto columns = GetColumns(), rows = GetRows();
-    auto boardSize = columns * rows;
-
-    *results = new Board[boardSize - filledCells];
+    *results = new Board[columns * rows - filledCells];
     auto _results = *results;
 
     int idx = 0;
@@ -116,7 +130,7 @@ void Board::SetCell(int x, int y, unsigned int val) {
 }
 
 void Board::CalculateScore() {
-    score = GetRows() * GetColumns() - filledCells; // reset
+    partialScore = rows * columns - filledCells; // reset
 
     Point slowIncrement, fastIncrement;
 
@@ -164,8 +178,8 @@ void Board::CalculateScore() {
 }
 
 void Board::CalculateScoreOnDirection(Point slowIncrement, Point fastIncrement, bool startFromTopRight, bool applyInitialSlowIncrement) {
-    int rows = GetRows(), columns = GetColumns();
-    unsigned int i = 0 + applyInitialSlowIncrement * slowIncrement.x + startFromTopRight * (columns - 1),
+    unsigned int
+        i = 0 + applyInitialSlowIncrement * slowIncrement.x + startFromTopRight * (columns - 1),
         j = 0 + applyInitialSlowIncrement * slowIncrement.y;
 
     for (; i >= 0 && j >= 0 && i < columns && j < rows; i += slowIncrement.x, j += slowIncrement.y) {
@@ -182,8 +196,8 @@ void Board::CalculateScoreOnDirection(Point slowIncrement, Point fastIncrement, 
 
             counter = (counter * CHAR_IS(lastSeen, val)) + 1; // update counter or reset to 1
 
-            score += (winOrLoss * 4) << counter; // increment/decrement score by 2 << 1 up to 2 << lineLength
-            score += ((counter == lineLength) * winOrLoss) << 24; // handle win/loss (counter == lineLength) by adding or subtracting a large number (1 << 24)
+            partialScore += (winOrLoss * 4) << counter; // increment/decrement score by 2 << 1 up to 2 << lineLength
+            partialScore += ((counter == lineLength) * winOrLoss) << 24; // handle win/loss (counter == lineLength) by adding or subtracting a large number (1 << 24)
             isTerminal |= (counter == lineLength) * CHAR_NOT(CHAR_IS(val, EMPTY));
 
             lastSeen = val;
@@ -192,8 +206,8 @@ void Board::CalculateScoreOnDirection(Point slowIncrement, Point fastIncrement, 
 }
 
 void Board::Print() const {
-    for (unsigned int j = 0; j < GetRows(); j++) {
-        for (unsigned int i = 0; i < GetColumns(); i++) {
+    for (unsigned int j = 0; j < rows; j++) {
+        for (unsigned int i = 0; i < columns; i++) {
             cout << GetCell(i, j) << '-';
         }
         cout << endl;

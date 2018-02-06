@@ -23,19 +23,19 @@ public:
 
     CUDA_CALLABLE_MEMBER ~Board();
 
-    void SetTreePosition(const unsigned int& pos) { treePosition = pos; }
-    unsigned int GetTreePosition() const { return treePosition; }
+    inline void SetTreePosition(const unsigned int& pos) { treePosition = pos; }
+    inline unsigned int GetTreePosition() const { return treePosition; }
 
+    inline bool HasNextMove() const { return GetUpper16Bits(nextMoveIterator) < columns && GetLower16Bits(nextMoveIterator) < rows && (!IsTerminal()); }
     void GetNextMove(Board& move, GAME_CHAR player);
-    bool HasNextMove() const { return GetUpper16Bits(nextMoveIterator) < GetUpper16Bits(xy) && GetLower16Bits(nextMoveIterator) < GetLower16Bits(xy) && (!IsTerminal()); }
-    void ResetMoveIterator() { nextMoveIterator = 0; }
+    inline void ResetMoveIterator() { nextMoveIterator = 0; }
 
     int GenerateMoves(Board** results, GAME_CHAR player);
 
-    unsigned int inline GetColumns() const { return GetUpper16Bits(xy); }
-    unsigned int inline GetRows() const { return GetLower16Bits(xy); }
+    inline unsigned int GetColumns() const { return columns; }
+    inline unsigned int GetRows() const { return rows; }
 
-    unsigned int inline GetCell(const int& x, const int& y) const {
+    inline unsigned int GetCell(const int& x, const int& y) const {
         return GetCellInternal(GetIndex(x, y), GetOffset(x, y));
     }
 
@@ -43,39 +43,45 @@ public:
     void Print() const;
 
     void CalculateScore();
-    long long int inline GetScore() const { return score; }
-    void inline SetScore(const long long int& _score) { score = _score; }
+    inline long long GetScore() const { return partialScore; }
+    inline void SetScore(const long long& _score) { partialScore = _score; }
 
-    bool inline IsTerminal() const { return isTerminal || (GetColumns() * GetRows() == filledCells); }
+    inline bool IsTerminal() const { return isTerminal || (columns * rows == filledCells); }
+
+    inline unsigned int GetSizeForBuffer() const {
+        return GetDataStructureSize() + 2;
+    }
+
+    int* CopyToBuffer(int* buffer) const;
 private:
     unsigned int* data;
-    unsigned int xy, filledCells, treePosition, nextMoveIterator;
-    unsigned char lineLength, isTerminal;
-    long long int score;
+    unsigned int filledCells, treePosition, nextMoveIterator;
+    unsigned char columns, rows, lineLength, isTerminal;
+    long long partialScore;
     // min size of class: 16 bytes (4 * (1 int of data + 3 int properties))
 
     void CalculateScoreOnDirection(Point slowIncrement, Point fastIncrement, bool startFromTopRight = false, bool applyInitialSlowIncrement = false);
 
-    unsigned int inline GetCellInternal(const int& index, const char& offset) const {
+    inline unsigned int GetCellInternal(const int& index, const char& offset) const {
         return (data[index] >> offset) & 0x3;
     }
 
-    unsigned int inline GetIndex(const int& x, const int& y) const {
+    inline unsigned int GetIndex(const int& x, const int& y) const {
         return this->pos(x, y) / 32;
     }
 
-    unsigned int inline GetOffset(const int& x, const int& y) const {
+    inline unsigned int GetOffset(const int& x, const int& y) const {
         return this->pos(x, y) % 32;
     }
 
-    unsigned int inline pos(const int& x, const int& y) const {
-        return (GetColumns() * y + x) << 1;
+    inline unsigned int pos(const int& x, const int& y) const {
+        return (this->columns * y + x) << 1;
     }
 
-    unsigned int inline GetDataStructureSize() const {
-        return ((GetColumns() * GetRows() << 1) + 31) / (sizeof(int) << 3); // (x * y * 2 + 31) / (8 * sizeof(int)); 
+    inline unsigned int GetDataStructureSize() const {
+        return ((this->columns * this->rows << 1) + 31) / (sizeof(int) << 3); // (x * y * 2 + 31) / (8 * sizeof(int)); 
     }
 
-    unsigned int inline GetUpper16Bits(const unsigned int& val) const { return val >> 16; }
-    unsigned int inline GetLower16Bits(const unsigned int& val) const { return val & 0xFFFF; }
+    inline unsigned int GetUpper16Bits(const unsigned int& val) const { return val >> 16; }
+    inline unsigned int GetLower16Bits(const unsigned int& val) const { return val & 0xFFFF; }
 };
