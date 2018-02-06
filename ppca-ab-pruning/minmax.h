@@ -2,7 +2,7 @@
 
 #include <queue>
 #include <map>
-#include <stack>
+#include <list>
 
 #include "board.h"
 #include "State.h"

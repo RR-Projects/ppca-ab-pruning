@@ -54,8 +54,6 @@ private:
     long long int score;
     // min size of class: 16 bytes (4 * (1 int of data + 3 int properties))
 
-    int alpha, beta;
-
     void CalculateScoreOnDirection(Point slowIncrement, Point fastIncrement, bool startFromTopRight = false, bool applyInitialSlowIncrement = false);
 
     unsigned int inline GetCellInternal(const int& index, const char& offset) const {

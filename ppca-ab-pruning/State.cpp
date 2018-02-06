@@ -7,6 +7,9 @@ State::State(GAME_CHAR player, const Board& board)
 {
     score = CHAR_IS(player, PLAYER) * INT64_MIN
         + CHAR_IS(player, OPPONENT) * INT64_MAX;
+
+    alpha = INT64_MIN;
+    beta = INT64_MAX;
     this->board = board;
 }
 

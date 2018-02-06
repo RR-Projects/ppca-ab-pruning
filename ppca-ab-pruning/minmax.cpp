@@ -55,24 +55,24 @@ namespace ppca {
         GAME_CHAR player = startPlayer;
 
         startBoard.SetTreePosition(0);
-        stack<State> _stack;
-        _stack.push(State(player, startBoard));
+        list<State> _stack;
+        _stack.push_back(State(player, startBoard));
 
         State bestMove(player);
 
         while (!_stack.empty()) {
-            State* parent = &_stack.top();
+            State* parent = &_stack.back();
 
             if (depth <= 0 || !parent->GetBoard().HasNextMove() || parent->GetBoard().IsTerminal()) {
                 State* child = new State(*parent); // copy constructor
-                _stack.pop();
+                _stack.pop_back();
 
                 if (_stack.empty()) // reached top of tree
                     continue;
 
                 player = SWITCH_PLAYER(player);
                 depth++;
-                parent = &_stack.top();
+                parent = &_stack.back();
 
                 auto score = child->GetScore();
                 if (gpuResults.find(child->GetBoard().GetTreePosition()) != gpuResults.end())
@@ -90,11 +90,32 @@ namespace ppca {
                     CHAR_IS(player, PLAYER) * max(score, prevScore) + // MAX
                     CHAR_IS(player, OPPONENT) * min(score, prevScore)  // MIN
                 );
+
+                parent->SetAlpha(
+                    CHAR_IS(player, PLAYER) * max(score, parent->GetAlpha()) +  // MAX
+                    CHAR_IS(player, OPPONENT) * parent->GetAlpha() // MIN
+                );
+
+                parent->SetBeta(
+                    CHAR_IS(player, PLAYER) * parent->GetBeta() + // MAX
+                    CHAR_IS(player, OPPONENT) * min(score, parent->GetBeta())  // MIN
+                );
+
+                // alpha beta pruning
+                if (parent->GetAlpha() > parent->GetBeta()) {
+
+                    _stack.pop_back();
+                    player = SWITCH_PLAYER(player);
+                    depth++;
+                }
             }
             else if (parent->GetBoard().HasNextMove()) {
                 State move(SWITCH_PLAYER(player));
                 parent->GetBoard().GetNextMove(move.GetBoard(), player);
-                _stack.push(move);
+                move.SetAlpha(parent->GetAlpha());
+                move.SetBeta(parent->GetBeta());
+
+                _stack.push_back(move);
                 player = SWITCH_PLAYER(player);
                 depth--;
             }
