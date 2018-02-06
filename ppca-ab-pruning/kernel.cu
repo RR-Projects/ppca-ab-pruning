@@ -11,6 +11,7 @@
 
 #include "board.h"
 #include "minmax.h"
+#include <stdlib.h>
 
 cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
 
@@ -27,8 +28,33 @@ __global__ void c(int* c, int count) {
         c[i] = (1 << i) + 1;
 }
 
+int _main() {
+	Board myBoard(3, 3, 3);
+	int xpostion = 0;
+	int ypostion = 0;
+
+	while (1) {
+		myBoard.Print();
+		if (myBoard.IsTerminal()) {
+			cout << "You something...";
+			cin >> xpostion;
+			break;
+		}
+		cout << "Provide postion to set 'X'" << endl;
+		cout << "x:"; cin >> xpostion;
+		cout << "y:"; cin >> ypostion;
+		myBoard.SetCell(xpostion, ypostion, PLAYER);
+		//TO DO LOGIC
+		//myBoard.SetCell(0, 0, OPPONENT);
+		system("cmd /c cls");
+	}
+
+	return 0;
+}
+
 int main()
 {
+	return _main();
     int N = 2 << 13;
     Board _board(2, 2, 2);
     ppca::minmax mmAlg;
