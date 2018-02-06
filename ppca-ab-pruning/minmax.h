@@ -20,7 +20,7 @@ namespace ppca {
 
         unsigned int ConvertToGpuData(int** data, const list<Board>& tasks);
 
-        Board GetBestMove(Board& startBoard, GAME_CHAR startPlayer, const map<unsigned int, long long>& gpuResults, int depth);
+        State GetBestMove(Board& startBoard, GAME_CHAR startPlayer, const map<unsigned int, long long>& gpuResults, int depth);
     };
 
 }

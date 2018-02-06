@@ -64,7 +64,7 @@ namespace ppca {
         return size;
     }
 
-    Board minmax::GetBestMove(Board& startBoard, GAME_CHAR startPlayer, const map<unsigned int, long long>& gpuResults, int depth) {
+    State minmax::GetBestMove(Board& startBoard, GAME_CHAR startPlayer, const map<unsigned int, long long>& gpuResults, int depth) {
         int maxDepth = depth;
         GAME_CHAR player = startPlayer;
 
@@ -138,7 +138,7 @@ namespace ppca {
         }
 
 
-        return bestMove.GetBoard();
+        return bestMove;
     }
 
     minmax::~minmax() { }

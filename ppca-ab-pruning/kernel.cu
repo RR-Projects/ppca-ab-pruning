@@ -19,7 +19,7 @@ __global__ void minmaxKernel(int taskCount, long long* results, int* data, unsig
         c[i] = (1 << i) + 1;*/
 }
 
-Board FindBestMove(Board& board, GAME_CHAR player, int depth) {
+void FindBestMove(State& state, GAME_CHAR player, int depth) {
     auto cudaStatus = cudaSetDevice(0);
     if (cudaStatus != cudaSuccess) {
         cerr << "cudaSetDevice failed! Do you have a CUDA-capable GPU installed?";
@@ -35,7 +35,7 @@ Board FindBestMove(Board& board, GAME_CHAR player, int depth) {
     int minGridSize;    // The minimum grid size needed to achieve the maximum occupancy for a full device launch 
     int gridSize;       // The actual grid size needed, based on input size
 
-    auto tasks = mmAlg.GetTasks(board, player, N, depth, searchedDepth);
+    auto tasks = mmAlg.GetTasks(state.GetBoard(), player, N, depth, searchedDepth);
 
     float time;
     cudaEvent_t start, stop;
@@ -109,26 +109,105 @@ Board FindBestMove(Board& board, GAME_CHAR player, int depth) {
     for (int i = 0; i < tasks.size(); i++, it++)
         results.insert(pair<unsigned int, long long>(it->GetTreePosition(), host_results[i]));
 
-    Board bestMove = mmAlg.GetBestMove(board, player, results, searchedDepth);
+    State bestMove = mmAlg.GetBestMove(state.GetBoard(), player, results, searchedDepth);
 
     cudaFree(dev_results);
     cudaFree(dev_data);
 
-    return bestMove;
+    state = bestMove;
+}
+
+int game_loop() {
+    Board _board(3, 3, 3);
+    State state(PLAYER, _board);
+    int depth = _board.GetRows() * _board.GetColumns();
+
+    int xpostion = 0;
+    int ypostion = 0;
+
+    while (1) {
+        Board* board = &state.GetBoard();
+        board->Print();
+        if (board->IsTerminal()) {
+            if (state.GetScore() == 0)
+                cout << "It was a DRAW.";
+            else if (state.GetScore() < 0)
+                cout << "You WON !!!";
+            else
+                cout << "You lost.";
+
+            cin >> xpostion;
+            break;
+        }
+        cout << endl << "Provide postion to set 'X' mark" << endl;
+
+        //Validate position
+        bool posIsTaken = true;
+        //Check if pos is taken
+        while (posIsTaken == true) {
+            //init vars
+            posIsTaken = false;
+            xpostion = 0;
+            ypostion = board->GetRows() + 2;
+            //Check if x is valid
+            while (1) {
+                cout << "x(1-" << board->GetColumns() << "):"; cin >> xpostion;
+                xpostion--;
+                if (xpostion < 0 || xpostion >= board->GetColumns()) {
+                    system("cmd /c cls");
+                    board->Print();
+                    cout << endl << "Provide postion to set 'X' mark" << endl;
+                    cout << "Error: x value is not valid" << endl;
+                }
+                else {
+                    break;
+                }
+            }
+
+            //Check if y is valid
+            while (1) {
+                cout << "y(1-" << board->GetRows() << "):"; cin >> ypostion;
+                ypostion--;
+                if (ypostion < 0 || ypostion >= board->GetRows()) {
+                    system("cmd /c cls");
+                    board->Print();
+                    cout << endl << "Provide postion to set 'X' mark" << endl;
+                    cout << "Error: y value is not valid" << endl;
+                    cout << "x(1-" << board->GetColumns() << "):" << xpostion << endl;
+                }
+                else {
+                    break;
+                }
+            }
+
+            //Check pos is taken
+            if (board->GetCell(xpostion, ypostion) != 0) {
+                posIsTaken = true;
+                system("cmd /c cls");
+                board->Print();
+                cout << endl << "Provide postion to set 'X' mark" << endl;
+                cout << "Error: postion is taken" << endl;
+            }
+        }
+
+        //Add pos and contiune
+        board->SetCell(xpostion, ypostion, OPPONENT);
+        depth--;
+
+        if (!board->IsTerminal()) {
+            FindBestMove(state, PLAYER, depth);
+            depth--;
+        }
+
+        system("cmd /c cls");
+    }
+
+    return 0;
 }
 
 int main()
 {
-    Board _board(3, 3, 3);
-    int depth = _board.GetRows() * _board.GetColumns();
-
-    _board.SetCell(0, 0, OPPONENT); // the user
-    depth--;
-
-    Board bMove = FindBestMove(_board, PLAYER, depth);
-
-    _board = bMove;
-    depth--;
+    game_loop();
 
     return 0;
 }
