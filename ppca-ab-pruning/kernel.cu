@@ -40,9 +40,58 @@ int _main() {
 			cin >> xpostion;
 			break;
 		}
-		cout << "Provide postion to set 'X'" << endl;
-		cout << "x:"; cin >> xpostion;
-		cout << "y:"; cin >> ypostion;
+		cout << endl << "Provide postion to set 'X' mark" << endl;
+		
+		//Validate position
+		bool posIsTaken = true;
+		//Check if pos is taken
+		while (posIsTaken == true) {
+			//init vars
+			posIsTaken = false;
+			xpostion = 0;
+			ypostion = myBoard.GetRows() + 2;
+			//Check if x is valid
+			while (1) {
+				cout << "x(1-" << myBoard.GetColumns() << "):"; cin >> xpostion;
+				xpostion--;
+				if (xpostion < 0 || xpostion >= myBoard.GetColumns()) {
+					system("cmd /c cls");
+					myBoard.Print();
+					cout << endl << "Provide postion to set 'X' mark" << endl;
+					cout << "Error: x value is not valid" << endl;
+				}
+				else {
+					break;
+				}
+			}
+
+			//Check if y is valid
+			while (1) {
+				cout << "y(1-" << myBoard.GetRows() << "):"; cin >> ypostion;
+				ypostion--;
+				if (ypostion < 0 || ypostion >= myBoard.GetRows()) {
+					system("cmd /c cls");
+					myBoard.Print();
+					cout << endl << "Provide postion to set 'X' mark" << endl;
+					cout << "Error: y value is not valid" << endl;
+					cout << "x(1-" << myBoard.GetColumns() << "):" << xpostion << endl;
+				}
+				else {
+					break;
+				}
+			}
+
+			//Check pos is taken
+			if (myBoard.GetCell(xpostion, ypostion) != 0) {
+				posIsTaken = true;
+				system("cmd /c cls");
+				myBoard.Print();
+				cout << endl << "Provide postion to set 'X' mark" << endl;
+				cout << "Error: postion is taken" << endl;
+			}
+		}
+
+		//Add pos and contiune
 		myBoard.SetCell(xpostion, ypostion, PLAYER);
 		//TO DO LOGIC
 		//myBoard.SetCell(0, 0, OPPONENT);
