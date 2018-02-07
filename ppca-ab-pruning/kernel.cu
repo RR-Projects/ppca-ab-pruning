@@ -60,6 +60,7 @@ public:
     friend class DevState;
 
     __device__ static void CreateInPlace(DevBoard* ptr, unsigned int* data) {
+        ptr->nextMoveIterator = 0;
         ptr->filledCells = *data;
         data++;
 
@@ -76,6 +77,7 @@ public:
 
     __device__ static void CreateInPlace(DevBoard* ptr, const DevBoard& b) {
         ptr->filledCells = b.filledCells;
+        ptr->nextMoveIterator = 0;
 
         ptr->columns = b.columns;
         ptr->rows = b.rows;
@@ -338,8 +340,10 @@ __device__ long long dev_minmax(const DevBoard &board, char* _stack, unsigned in
 
     DevState::CreateInPlace(DevState::At(_stack, stackPos, dataStrSize), startPlayer, board);
 
-    long long bestScore = CHAR_IS(startPlayer, PLAYER) * INT64_MIN
-        + CHAR_IS(startPlayer, OPPONENT) * INT64_MAX;;
+    /*long long bestScore = CHAR_IS(startPlayer, PLAYER) * INT64_MIN
+        + CHAR_IS(startPlayer, OPPONENT) * INT64_MAX;*/
+
+    bool directyTerminal = true;
 
     while (stackPos >= 0) {
         DevState* parent = DevState::At(_stack, stackPos, dataStrSize);
@@ -348,22 +352,24 @@ __device__ long long dev_minmax(const DevBoard &board, char* _stack, unsigned in
             DevState* child = parent;
             stackPos--;
 
-            if (stackPos < 0) // reached top of tree
+            if (stackPos < 0) { // reached top of tree
+                if (directyTerminal)
+                    child->SetScore(child->GetBoard().GetPartialScore());
                 continue;
+            }
 
             startPlayer = SWITCH_PLAYER(startPlayer);
             depth++;
             parent = DevState::At(_stack, stackPos, dataStrSize);
 
-            child->GetBoard().CalculateScore(); // getting the calculated score from the board
-            auto score = child->GetBoard().GetPartialScore();
+            auto score = child->GetBoard().GetPartialScore(); // getting the calculated score from the board
 
             auto prevScore = parent->GetScore();
 
-            if (depth == maxDepth &&
+            /*if (depth == maxDepth &&
                 (CHAR_IS(startPlayer, PLAYER) && prevScore < score ||
                     CHAR_IS(startPlayer, OPPONENT) && prevScore > score))
-                bestScore = score;
+                bestScore = score;*/
 
             parent->SetScore(
                 CHAR_IS(startPlayer, PLAYER) * max(score, prevScore) + // MAX
@@ -386,6 +392,8 @@ __device__ long long dev_minmax(const DevBoard &board, char* _stack, unsigned in
                 startPlayer = SWITCH_PLAYER(startPlayer);
                 depth++;
             }
+
+            directyTerminal = false;
         }
         else if (parent->GetBoard().HasNextMove()) {
             unsigned int tPos;
@@ -403,7 +411,8 @@ __device__ long long dev_minmax(const DevBoard &board, char* _stack, unsigned in
         }
     }
 
-    return bestScore;
+    DevState* root = DevState::At(_stack, 0, dataStrSize);
+    return root->GetScore();
 }
 
 /// --------------- KERNEL
@@ -415,11 +424,14 @@ __global__ void minmaxKernel(int taskCount, void* dev_stack, long long* results,
         DevState* stack = DevState::At((char*)dev_stack, threadPos * (maxDepth + 1), dataStructureSize);
         DevBoard b(data + i * dataItemSize);
 
-        //b.Print();
-
-        long long bestScore = dev_minmax(b, (char*)stack, dataStructureSize, PLAYER, maxDepth);
-
-        results[i] = bestScore;
+        if (maxDepth == 0) {
+            b.CalculateScore();
+            results[i] = b.GetPartialScore();
+        }
+        else {
+            long long bestScore = dev_minmax(b, (char*)stack, dataStructureSize, PLAYER, maxDepth);
+            results[i] = bestScore;
+        }
     }
 }
 
@@ -446,14 +458,14 @@ void FindBestMove(State& state, GAME_CHAR player, int depth) {
     int minGridSize;    // The minimum grid size needed to achieve the maximum occupancy for a full device launch 
     int gridSize;       // The actual grid size needed, based on input size
 
-    int gpuDepth = 3;
     auto tasks = mmAlg.GetTasks(state.GetBoard(), player, N, depth, searchedDepth);
+    int gpuDepth = min(4, depth - searchedDepth);
 
     cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, minmaxKernel, 0, tasks.size());
 
     // Round up according to array size 
-    gridSize = 1;// (tasks.size() + blockSize - 1) / blockSize;
-    blockSize = 1;
+    gridSize = (tasks.size() + blockSize - 1) / blockSize;
+    //blockSize = 1;
 
     cudaDeviceSynchronize();
 
@@ -494,8 +506,6 @@ void FindBestMove(State& state, GAME_CHAR player, int depth) {
         exit(1);
     }
 
-    //tasks.front().Print();
-
     minmaxKernel << <gridSize, blockSize >> > (tasks.size(), dev_stack, dev_results, dev_data, size / tasks.size(), dataElemCount, gpuDepth);
 
     cudaDeviceSynchronize();
@@ -530,7 +540,7 @@ void FindBestMove(State& state, GAME_CHAR player, int depth) {
 }
 
 int game_loop() {
-    Board _board(3, 3, 3);
+    Board _board(4, 4, 3);
     State state(PLAYER, _board);
     int depth = _board.GetRows() * _board.GetColumns();
 
@@ -541,11 +551,12 @@ int game_loop() {
         Board* board = &state.GetBoard();
         board->Print();
         if (board->IsTerminal()) {
-            if (state.GetScore() == 0)
+            auto winner = board->GetWinner();
+            if (winner == EMPTY)
                 cout << "It was a DRAW.";
-            else if (state.GetScore() < 0)
+            else if (winner == OPPONENT)
                 cout << "You WON !!!";
-            else
+            else if (winner == PLAYER)
                 cout << "You lost.";
 
             cin >> xpostion;

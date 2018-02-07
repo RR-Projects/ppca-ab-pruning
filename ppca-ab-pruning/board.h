@@ -51,6 +51,7 @@ public:
 
     inline bool IsTerminal() const { return isTerminal || (columns * rows == filledCells); }
 
+    inline GAME_CHAR GetWinner() const { return winner; }
 
     inline unsigned int GetDataStructureSize() const {
         return ((this->columns * this->rows << 1) + 31) / (sizeof(int) << 3); // (x * y * 2 + 31) / (8 * sizeof(int)); 
@@ -64,6 +65,7 @@ private:
     unsigned int filledCells, treePosition, nextMoveIterator;
     unsigned char columns, rows, lineLength, isTerminal;
     long long partialScore;
+    GAME_CHAR winner;
     // min size of class: 16 bytes (4 * (1 int of data + 3 int properties))
 
     void CalculateScoreOnDirection(Point slowIncrement, Point fastIncrement, bool startFromTopRight = false, bool applyInitialSlowIncrement = false);

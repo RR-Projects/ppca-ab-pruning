@@ -4,8 +4,8 @@ unsigned long long Board::nCreated = 0ULL;
 unsigned long long Board::nCopied = 0ULL;
 unsigned long long Board::nDeleted = 0ULL;
 
-Board::Board() : data(nullptr), columns(0), rows(0), partialScore(0), filledCells(0), lineLength(0), isTerminal(false) { }
-Board::Board(const int& x, const int& y, const unsigned char& lineLength) : data(nullptr), lineLength(lineLength), filledCells(0), treePosition(0), nextMoveIterator(0), partialScore(0), isTerminal(false)
+Board::Board() : data(nullptr), columns(0), rows(0), partialScore(0), filledCells(0), lineLength(0), isTerminal(false), winner(EMPTY) { }
+Board::Board(const int& x, const int& y, const unsigned char& lineLength) : data(nullptr), lineLength(lineLength), filledCells(0), treePosition(0), nextMoveIterator(0), partialScore(0), isTerminal(false), winner(EMPTY)
 {
     nCreated++;
 
@@ -21,7 +21,7 @@ Board::Board(const Board& b) {
     operator=(b);
 }
 
-Board::Board(Board&& b) : columns(b.columns), rows(b.rows), filledCells(b.filledCells), partialScore(b.partialScore), lineLength(b.lineLength), treePosition(b.treePosition), nextMoveIterator(0), isTerminal(b.isTerminal) {
+Board::Board(Board&& b) : columns(b.columns), rows(b.rows), filledCells(b.filledCells), partialScore(b.partialScore), lineLength(b.lineLength), treePosition(b.treePosition), nextMoveIterator(0), isTerminal(b.isTerminal), winner(b.winner) {
     data = b.data;
 }
 
@@ -38,6 +38,7 @@ Board& Board::operator=(const Board & b)
     filledCells = b.filledCells;
     treePosition = b.treePosition;
     partialScore = b.partialScore;
+    winner = b.winner;
 
     auto size = GetDataStructureSize();
     data = new unsigned int[size];
@@ -215,6 +216,9 @@ void Board::CalculateScoreOnDirection(Point slowIncrement, Point fastIncrement, 
             partialScore += (winOrLoss * 4) << counter; // increment/decrement score by 2 << 1 up to 2 << lineLength
             partialScore += ((counter == lineLength) * winOrLoss) << 24; // handle win/loss (counter == lineLength) by adding or subtracting a large number (1 << 24)
             isTerminal |= (counter == lineLength) * CHAR_NOT(CHAR_IS(val, EMPTY));
+
+            if (counter == lineLength)
+                winner = val;
 
             lastSeen = val;
         }

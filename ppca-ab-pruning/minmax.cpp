@@ -73,6 +73,7 @@ namespace ppca {
         _stack.push_back(State(player, startBoard));
 
         State bestMove(player);
+        bool found = false;
 
         while (!_stack.empty()) {
             State* parent = &_stack.back();
@@ -97,8 +98,10 @@ namespace ppca {
                 // TODO: maybe move in the !HasNextMove part
                 if (depth == maxDepth &&
                     (CHAR_IS(player, PLAYER) && prevScore < score ||
-                        CHAR_IS(player, OPPONENT) && prevScore > score))
+                        CHAR_IS(player, OPPONENT) && prevScore > score)) {
                     bestMove = *child;
+                    found = true;
+                }
 
                 parent->SetScore(
                     CHAR_IS(player, PLAYER) * max(score, prevScore) + // MAX
@@ -135,6 +138,11 @@ namespace ppca {
                 player = SWITCH_PLAYER(player);
                 depth--;
             }
+        }
+
+        if (!found) {
+            startBoard.ResetMoveIterator();
+            startBoard.GetNextMove(bestMove.GetBoard(), SWITCH_PLAYER(startPlayer));
         }
 
         return bestMove;
