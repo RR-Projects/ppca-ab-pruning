@@ -50,11 +50,11 @@ namespace ppca {
         return res2;
     }
 
-    unsigned int minmax::ConvertToGpuData(int** data, const list<Board>& tasks)
+    unsigned int minmax::ConvertToGpuData(unsigned int** data, const list<Board>& tasks)
     {
         unsigned int size = tasks.front().GetSizeForBuffer() * tasks.size();
 
-        auto start = *data = new int[size];
+        auto start = *data = new unsigned int[size];
 
         for each (const Board& b in tasks)
         {

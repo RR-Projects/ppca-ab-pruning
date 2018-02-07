@@ -62,7 +62,7 @@ Board::Board(int* data) : nextMoveIterator(0), treePosition(0), partialScore(0) 
     memcpy(this->data, data, size * sizeof(int));
 }
 
-int * Board::CopyToBuffer(int * buffer) const {
+unsigned int * Board::CopyToBuffer(unsigned int * buffer) const {
     *buffer = filledCells;
     buffer++;
 
@@ -222,24 +222,29 @@ void Board::CalculateScoreOnDirection(Point slowIncrement, Point fastIncrement, 
 }
 
 void Board::Print() const {
+    /*for (int i = 31; i >= 0; i--) {
+        printf("%d", (data[0] >> i) % 2);
+    }
+    cout << endl;*/
+
     cout << "  ";
     for (unsigned int i = 0; i < columns; i++)
         cout << i + 1;
 
     cout << endl << endl;
     for (unsigned int j = 0; j < rows; j++) {
-        cout << j + 1 << ' ';
+        cout << j + 1 << " ";
         for (unsigned int i = 0; i < columns; i++) {
             switch (GetCell(i, j))
             {
             case EMPTY:
-                cout << '-';
+                cout << "-";
                 break;
             case OPPONENT:
-                cout << 'X';
+                cout << "X";
                 break;
             case PLAYER:
-                cout << '0';
+                cout << "0";
                 break;
             default:
                 break;

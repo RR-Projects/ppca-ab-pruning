@@ -52,10 +52,13 @@ public:
     inline bool IsTerminal() const { return isTerminal || (columns * rows == filledCells); }
 
 
+    inline unsigned int GetDataStructureSize() const {
+        return ((this->columns * this->rows << 1) + 31) / (sizeof(int) << 3); // (x * y * 2 + 31) / (8 * sizeof(int)); 
+    }
 
     inline unsigned int GetSizeForBuffer() const { return GetDataStructureSize() + 2; }
 
-    int* CopyToBuffer(int* buffer) const;
+    unsigned int* CopyToBuffer(unsigned int* buffer) const;
 private:
     unsigned int* data;
     unsigned int filledCells, treePosition, nextMoveIterator;
@@ -79,10 +82,6 @@ private:
 
     inline unsigned int pos(const int& x, const int& y) const {
         return (this->columns * y + x) << 1;
-    }
-
-    inline unsigned int GetDataStructureSize() const {
-        return ((this->columns * this->rows << 1) + 31) / (sizeof(int) << 3); // (x * y * 2 + 31) / (8 * sizeof(int)); 
     }
 
     inline unsigned int GetUpper16Bits(const unsigned int& val) const { return val >> 16; }

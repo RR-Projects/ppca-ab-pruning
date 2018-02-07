@@ -18,7 +18,7 @@ namespace ppca {
 
         list<Board> GetTasks(Board& startingBoard, GAME_CHAR startPlayer, int minTaskCount, int maxDepth, int& searchedDepth);
 
-        unsigned int ConvertToGpuData(int** data, const list<Board>& tasks);
+        unsigned int ConvertToGpuData(unsigned int** data, const list<Board>& tasks);
 
         State GetBestMove(Board& startBoard, GAME_CHAR startPlayer, const map<unsigned int, long long>& gpuResults, int depth);
     };
