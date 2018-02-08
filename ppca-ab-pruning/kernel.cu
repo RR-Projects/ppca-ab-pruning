@@ -12,9 +12,9 @@
 #include "board.h"
 #include "minmax.h"
 
-__device__ class DevState;
+class DevState;
 
-__device__ struct DevPoint {
+struct DevPoint {
 public:
     int x, y;
 
@@ -46,7 +46,7 @@ public:
 
 };
 
-__device__ class DevBoard {
+class DevBoard {
 private:
     unsigned int filledCells, nextMoveIterator;
     unsigned char columns, rows, lineLength, isTerminal;
@@ -96,6 +96,8 @@ public:
 
     __device__ inline bool HasNextMove() const { return GetUpper16Bits(nextMoveIterator) < columns && GetLower16Bits(nextMoveIterator) < rows && (!IsTerminal()); }
     __device__ inline bool IsTerminal() const { return isTerminal || (columns * rows == filledCells); }
+
+    __device__ inline unsigned int GetFilledCells() const { return filledCells; }
 
     __device__ inline unsigned int GetMaxDepth() const { return columns * rows - filledCells; }
 
@@ -235,14 +237,14 @@ public:
 
 private:
     __device__ void CalculateScoreOnDirection(DevPoint slowIncrement, DevPoint fastIncrement, bool startFromTopRight = false, bool applyInitialSlowIncrement = false) {
-        unsigned int
+        int
             i = 0 + applyInitialSlowIncrement * slowIncrement.x + startFromTopRight * (columns - 1),
             j = 0 + applyInitialSlowIncrement * slowIncrement.y;
 
         for (; i >= 0 && j >= 0 && i < columns && j < rows; i += slowIncrement.x, j += slowIncrement.y) {
 
 
-            unsigned int x = i, y = j;
+            int x = i, y = j;
             unsigned int counter = 0;
             GAME_CHAR lastSeen = EMPTY;
             for (; x >= 0 && y >= 0 && x < columns && y < rows; x += fastIncrement.x, y += fastIncrement.y) {
@@ -282,7 +284,7 @@ private:
     }
 };
 
-__device__ class DevState {
+class DevState {
 private:
     long long score, alpha, beta;
     DevBoard board;
@@ -291,9 +293,12 @@ private:
 
 public:
 
-    __device__ static DevState* At(char* ptr, int offset, unsigned int boardDataSize) {
+    __device__ static DevState* At(char* ptr, int offset, unsigned int boardDataSize, unsigned int stackSize) {
         unsigned long long size = CharSize(boardDataSize);
-        return (DevState*)(ptr + size * offset);
+        char* r = (ptr + size * offset);
+        /*if (r - ptr > stackSize)
+            printf("Using out of bounds memory in threads stack %d", r - ptr);*/
+        return (DevState*)r;
     }
 
     __device__ static unsigned int CharSize(unsigned int boardDataSize) {
@@ -303,11 +308,11 @@ public:
     }
 
     __device__ static void CreateInPlace(DevState* ptr, GAME_CHAR player) {
-        ptr->score = CHAR_IS(player, PLAYER) * INT64_MIN
-            + CHAR_IS(player, OPPONENT) * INT64_MAX;
-
         ptr->alpha = INT64_MIN;
         ptr->beta = INT64_MAX;
+
+        ptr->score = CHAR_IS(player, PLAYER) * ptr->alpha
+            + CHAR_IS(player, OPPONENT) * ptr->beta;
     }
 
     __device__ static void CreateInPlace(DevState* ptr, GAME_CHAR player, const DevBoard& board) {
@@ -333,20 +338,15 @@ public:
     }
 };
 
-__device__ long long dev_minmax(const DevBoard &board, char* _stack, unsigned int dataStrSize, GAME_CHAR startPlayer, int depth) {
-    int maxDepth = depth;
-
+__device__ long long dev_minmax(const DevBoard &board, char* _stack, unsigned int stackSize, unsigned int dataStrSize, GAME_CHAR startPlayer, int depth) {
     int stackPos = 0;
 
-    DevState::CreateInPlace(DevState::At(_stack, stackPos, dataStrSize), startPlayer, board);
-
-    /*long long bestScore = CHAR_IS(startPlayer, PLAYER) * INT64_MIN
-        + CHAR_IS(startPlayer, OPPONENT) * INT64_MAX;*/
+    DevState::CreateInPlace(DevState::At(_stack, stackPos, dataStrSize, stackSize), startPlayer, board);
 
     bool directyTerminal = true;
 
     while (stackPos >= 0) {
-        DevState* parent = DevState::At(_stack, stackPos, dataStrSize);
+        DevState* parent = DevState::At(_stack, stackPos, dataStrSize, stackSize);
 
         if (depth <= 0 || !parent->GetBoard().HasNextMove() || parent->GetBoard().IsTerminal()) {
             DevState* child = parent;
@@ -360,16 +360,11 @@ __device__ long long dev_minmax(const DevBoard &board, char* _stack, unsigned in
 
             startPlayer = SWITCH_PLAYER(startPlayer);
             depth++;
-            parent = DevState::At(_stack, stackPos, dataStrSize);
+            parent = DevState::At(_stack, stackPos, dataStrSize, stackSize);
 
-            auto score = child->GetBoard().GetPartialScore(); // getting the calculated score from the board
+            auto score = child->GetScore();
 
             auto prevScore = parent->GetScore();
-
-            /*if (depth == maxDepth &&
-                (CHAR_IS(startPlayer, PLAYER) && prevScore < score ||
-                    CHAR_IS(startPlayer, OPPONENT) && prevScore > score))
-                bestScore = score;*/
 
             parent->SetScore(
                 CHAR_IS(startPlayer, PLAYER) * max(score, prevScore) + // MAX
@@ -396,12 +391,12 @@ __device__ long long dev_minmax(const DevBoard &board, char* _stack, unsigned in
             directyTerminal = false;
         }
         else if (parent->GetBoard().HasNextMove()) {
-            unsigned int tPos;
-            DevState* movePtr = DevState::At(_stack, stackPos + 1, dataStrSize);
+            DevState* movePtr = DevState::At(_stack, stackPos + 1, dataStrSize, stackSize);
             DevState::CreateInPlace(movePtr, SWITCH_PLAYER(startPlayer));
 
             parent->GetBoard().GetNextMove(movePtr->GetBoardPtr(), startPlayer);
 
+            movePtr->SetScore(movePtr->GetBoard().GetPartialScore()); // getting the calculated score from the board
             movePtr->SetAlpha(parent->GetAlpha());
             movePtr->SetBeta(parent->GetBeta());
 
@@ -411,45 +406,43 @@ __device__ long long dev_minmax(const DevBoard &board, char* _stack, unsigned in
         }
     }
 
-    DevState* root = DevState::At(_stack, 0, dataStrSize);
+    DevState* root = DevState::At(_stack, 0, dataStrSize, stackSize);
     return root->GetScore();
 }
 
 /// --------------- KERNEL
-__global__ void minmaxKernel(int taskCount, void* dev_stack, long long* results, unsigned int* data, unsigned int dataItemSize, unsigned int dataStructureSize, unsigned int maxDepth) {
+__global__ void minmaxKernel(int taskCount, void* dev_stack, long long* results, unsigned int* data, unsigned int dataItemSize, unsigned int dataStructureSize, GAME_CHAR startingPlayer, unsigned int maxDepth, unsigned int stackSize) {
     int threadPos = blockIdx.x * blockDim.x + threadIdx.x;
 
     for (int i = threadPos; i < taskCount; i += blockDim.x * gridDim.x) {
 
-        DevState* stack = DevState::At((char*)dev_stack, threadPos * (maxDepth + 1), dataStructureSize);
+        DevState* stack = DevState::At((char*)dev_stack, threadPos * (maxDepth + 1), dataStructureSize, stackSize);
         DevBoard b(data + i * dataItemSize);
 
-        if (maxDepth == 0) {
+        if (b.IsTerminal()) {
             b.CalculateScore();
             results[i] = b.GetPartialScore();
         }
         else {
-            long long bestScore = dev_minmax(b, (char*)stack, dataStructureSize, PLAYER, maxDepth);
+            GAME_CHAR boardPlayer = !(b.GetFilledCells() % 2);
+            boardPlayer = boardPlayer * startingPlayer +
+                !boardPlayer * SWITCH_PLAYER(startingPlayer);
+
+            long long bestScore = dev_minmax(b, (char*)stack, stackSize, dataStructureSize, boardPlayer, maxDepth);
             results[i] = bestScore;
         }
     }
 }
 
-void FindBestMove(State& state, GAME_CHAR player, int depth) {
+
+void FindBestMove(State& state, GAME_CHAR startingPlayer, int depth) {
     auto cudaStatus = cudaSetDevice(0);
     if (cudaStatus != cudaSuccess) {
         cerr << "cudaSetDevice failed! Do you have a CUDA-capable GPU installed?";
         exit(1);
     }
 
-    cudaDeviceSetLimit(cudaLimitMallocHeapSize, 16 * 1024 * 1024);
-    cudaStatus = cudaSetDevice(0);
-    if (cudaStatus != cudaSuccess) {
-        cerr << "cudaDeviceSetLimit failed!";
-        exit(1);
-    }
-
-    int N = 2 << 8;
+    int N = 2 << 9;
     ppca::minmax mmAlg;
 
     int searchedDepth;
@@ -458,7 +451,12 @@ void FindBestMove(State& state, GAME_CHAR player, int depth) {
     int minGridSize;    // The minimum grid size needed to achieve the maximum occupancy for a full device launch 
     int gridSize;       // The actual grid size needed, based on input size
 
-    auto tasks = mmAlg.GetTasks(state.GetBoard(), player, N, depth, searchedDepth);
+    GAME_CHAR statePlayer = !(state.GetBoard().GetFilledCells() % 2);
+    statePlayer = statePlayer * startingPlayer +
+        !statePlayer * SWITCH_PLAYER(startingPlayer);
+
+    auto tasks = mmAlg.GetTasks(state.GetBoard(), statePlayer, N, depth, searchedDepth);
+
     int gpuDepth = min(4, depth - searchedDepth);
 
     cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, minmaxKernel, 0, tasks.size());
@@ -491,10 +489,13 @@ void FindBestMove(State& state, GAME_CHAR player, int depth) {
 
     unsigned long long dSize = dataElemCount * sizeof(unsigned int) + sizeof(DevState);
     dSize += dSize % 8;
-    cudaStatus = cudaMalloc((void**)&dev_stack, (gpuDepth + 1) * gridSize * blockSize * dSize);
+    unsigned int stackSize = (gpuDepth + 1) * gridSize * blockSize * dSize;
+
+    cudaStatus = cudaMalloc((void**)&dev_stack, stackSize);
     if (cudaStatus != cudaSuccess) {
         cerr << "cudaMalloc failed for results array!";
         cudaFree(dev_data);
+        cudaFree(dev_results);
         exit(1);
     }
 
@@ -503,10 +504,11 @@ void FindBestMove(State& state, GAME_CHAR player, int depth) {
         cerr << "cudaMemcpy failed: data array to device!";
         cudaFree(dev_results);
         cudaFree(dev_data);
+        cudaFree(dev_stack);
         exit(1);
     }
-
-    minmaxKernel << <gridSize, blockSize >> > (tasks.size(), dev_stack, dev_results, dev_data, size / tasks.size(), dataElemCount, gpuDepth);
+    cout << "Starting " << gridSize * blockSize << " threads" << endl;
+    minmaxKernel << <gridSize, blockSize >> > (tasks.size(), dev_stack, dev_results, dev_data, size / tasks.size(), dataElemCount, startingPlayer, gpuDepth, stackSize);
 
     cudaDeviceSynchronize();
 
@@ -515,6 +517,7 @@ void FindBestMove(State& state, GAME_CHAR player, int depth) {
         fprintf(stderr, "kernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
         cudaFree(dev_results);
         cudaFree(dev_data);
+        cudaFree(dev_stack);
         exit(1);
     }
 
@@ -523,6 +526,7 @@ void FindBestMove(State& state, GAME_CHAR player, int depth) {
         cerr << "cudaMemcpy failed: results array to host!";
         cudaFree(dev_results);
         cudaFree(dev_data);
+        cudaFree(dev_stack);
         exit(1);
     }
 
@@ -531,10 +535,11 @@ void FindBestMove(State& state, GAME_CHAR player, int depth) {
     for (int i = 0; i < tasks.size(); i++, it++)
         results.insert(pair<unsigned int, long long>(it->GetTreePosition(), host_results[i]));
 
-    State bestMove = mmAlg.GetBestMove(state.GetBoard(), player, results, searchedDepth);
+    State bestMove = mmAlg.GetBestMove(state.GetBoard(), statePlayer, results, searchedDepth);
 
     cudaFree(dev_results);
     cudaFree(dev_data);
+    cudaFree(dev_stack);
 
     state = bestMove;
 }
@@ -618,7 +623,7 @@ int game_loop() {
         depth--;
 
         if (!board->IsTerminal()) {
-            FindBestMove(state, PLAYER, depth);
+            FindBestMove(state, OPPONENT, depth);
             depth--;
         }
 

@@ -24,6 +24,7 @@ public:
 
     ~Board();
 
+    inline unsigned int GetFilledCells() const { return filledCells; }
     inline unsigned int GetMaxDepth() const { return columns * rows - filledCells; }
 
     inline void SetTreePosition(const unsigned int& pos) { treePosition = pos; }

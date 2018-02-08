@@ -217,7 +217,7 @@ void Board::CalculateScoreOnDirection(Point slowIncrement, Point fastIncrement, 
             partialScore += ((counter == lineLength) * winOrLoss) << 24; // handle win/loss (counter == lineLength) by adding or subtracting a large number (1 << 24)
             isTerminal |= (counter == lineLength) * CHAR_NOT(CHAR_IS(val, EMPTY));
 
-            if (counter == lineLength)
+            if (counter == lineLength && winOrLoss != 0)
                 winner = val;
 
             lastSeen = val;

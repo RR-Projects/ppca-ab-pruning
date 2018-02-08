@@ -17,7 +17,7 @@ namespace ppca {
             while (!res1.empty()) {
                 Board& b = res1.front();
 
-                if (b.IsTerminal()) {
+                if (b.IsTerminal()) { // keep the terminal nodes in the loop
                     res2.push_back(b);
                     res1.pop_front();
                     continue;
@@ -141,6 +141,7 @@ namespace ppca {
         }
 
         if (!found) {
+            cout << "Best move not found. getting the first move possible." << endl;
             startBoard.ResetMoveIterator();
             startBoard.GetNextMove(bestMove.GetBoard(), SWITCH_PLAYER(startPlayer));
         }
